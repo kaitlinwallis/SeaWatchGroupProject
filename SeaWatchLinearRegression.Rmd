@@ -1,0 +1,14 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+SeaWatch Group Project
+
+Target Variable: GROSS - We would like to predict the Gross donations for a given area. 
+
+```{r}
+View(SeaWatch)
+
+```
+
