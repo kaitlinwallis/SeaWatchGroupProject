@@ -11,7 +11,7 @@ Target Variable: GROSS - We would like to predict the Gross donations for a give
 mydata <- na.omit(Seawatch_C_w_blanks[, 3:20])
 str(mydata)
 for (col in 2:ncol(mydata)){
-  hist(unlist(mydata[,col]),main = names(df[col]))
+  hist(unlist(mydata[,col]),main = names(mydata[col]))
 }
 
 
@@ -21,5 +21,109 @@ for (col in 2:ncol(mydata)){
 ```{r}
 hist(mydata[,2])
 hist(as.numeric(unlist(mydata[,2])))
+```
+```{r}
+attach(Seawatch_C_w_blanks)
+hist(MON,nclass=30)
+```
+
+```{r}
+hist(MOY,nclass=30)
+```
+```{r}
+hist(POP80,nclass=30)
+```
+
+```{r}
+ mydata[mydata$POP80==max(mydata$POP80,na.rm=T),]
+```
+```{r}
+cor(PERCAPI,HHMEDI,use="complete.obs")
+```
+```{r}
+plot(GROSS,POVPR*POP80)
+cor(GROSS,POVPR*POP80/100,use="complete.obs")
+```
+```{r}
+plot(GROSS,POVPR)
+cor(GROSS,POVPR,use="complete.obs")
+```
+We see that the correlation increaes when POPVR is expressed in numbers. 
+```{r}
+plot(GROSS,MFGPR)
+cor(GROSS,MFGPR,use = "complete.obs")
+```
+```{r}
+plot(GROSS,MFGPR*POP80)
+cor(GROSS,MFGPR*POP80,use="complete.obs")
+```
+```{r}
+plot(GROSS,MAGE)
+cor(GROSS,MAGE,use="complete.obs")
+```
+```{r}
+min(MAGE,na.rm=TRUE)
+```
+
+```{r}
+mydata[mydata$MAGE==min(mydata$MAGE,na.rm=T),]
+```
+```{r}
+plot(CART,GROSS)
+plot(REAG,GROSS)
+plot(ANDR,GROSS)
+cor(GROSS,CART,use="complete.obs")
+cor(GROSS,REAG,use="complete.obs")
+cor(GROSS,ANDR,use="complete.obs")
+
+```
+```{r}
+cor(ANDR,CART,use="complete.obs")
+cor(CART,REAG,use="complete.obs")
+cor(REAG,ANDR,use="complete.obs")
+```
+```{r}
+plot(CART,GROSS)
+plot(CART/POP80,GROSS,xlim = c(0.1,2))
+plot(REAG,GROSS)
+plot(ANDR,GROSS)
+
+
+na.omit(mydata[CART>POP80,])
+install.packages("car")
+library(car)
+```
+```{r}
+mydata[GROSS==43,]
+```
+Fixing the wrong population data
+
+```{r}
+detach(Seawatch_C_w_blanks)
+attach(mydata)
+
+mydata$num_COLL<-COLLPR*POP80
+model1<-lm(GROSS~POP80+MOY+CPI+num_COLL+PERCAPI)
+describe(GROSS)
+summary(model1)
+```
+```{r}
+#cor(mydata,use="complete.obs")
+mydata$VISIT<-as.factor(mydata$VISIT)
+
+model1<-lm(GROSS~POP80+CPI+num_COLL+PERCAPI+VISIT)
+summary(model1)
+```
+
+```{r}
+plot(model1)
+
+
+
+
+```
+```{r}
+
+
 ```
 
