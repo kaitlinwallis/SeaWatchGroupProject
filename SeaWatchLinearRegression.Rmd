@@ -8,7 +8,18 @@ SeaWatch Group Project
 Target Variable: GROSS - We would like to predict the Gross donations for a given area. 
 
 ```{r}
-View(SeaWatch)
+mydata <- na.omit(Seawatch_C_w_blanks[, 3:20])
+str(mydata)
+for (col in 2:ncol(mydata)){
+  hist(unlist(mydata[,col]),main = names(df[col]))
+}
 
+
+
+```
+
+```{r}
+hist(mydata[,2])
+hist(as.numeric(unlist(mydata[,2])))
 ```
 
