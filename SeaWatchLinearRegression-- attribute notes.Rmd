@@ -1,0 +1,182 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+SeaWatch Group Project
+
+Target Variable: GROSS - We would like to predict the Gross donations for a given area. 
+
+```{r}
+mydata <- na.omit(Seawatch_C_w_blanks)
+mydata <- mydata[, 3:20]
+str(mydata)
+for (col in 2:ncol(mydata)){
+  hist(unlist(mydata[,col]), main = names(mydata[col]))
+}
+
+attach(mydata)
+
+```
+
+CNVHRS - This variable cannot be obtained before prediction, so we cannot use it
+MOY- Month of Year- Which month they recieve the donation in. They seem to get all donations in July.
+
+MON- How many months into the program the donation occured., skewed to the left. Three distinct groups of modes.
+
+YR- Year the donation occured
+VISIT - Number of times they have visited, Skewed because they only go multiple times to some of them. (You have to do something to this.)
+LST- Was this the most recent visit. (You can't use this in prediction.)
+CPI - Customer Price index- Purchasing power (how rich the customer), skewed to the right. This could mean that rich customer donate more often, but it could also be that they have visited rich areas more often. 
+POP80- Population of town in 1980, there are some extremes
+HHMEDI- Household median income, looking more normal than other. Check out correlation between this and CPI
+PerCapI- Income per Capita (check out correlation with HHMEDI), skewed to the left 
+POVPR- Percent of people below the poverty line as a number. Here, we saw flaring out which indicated it had a multiplicative relationship. We decided to make a new attribute with POVPR * POP80
+COLLPR- Percent of people with college degrees, this should also be multiplied by POP80 
+MAGE - medium age, Here we see that there's not a high correlation but cities with high MAGE aren't donating very much. We also see some cities with really low MAGE, which could easily be a college town
+
+Note: There's a town where the median age is 21.7, where the PERCAPI is only $5,000 and where 56% has college degrees. This is probably a college town. 
+
+MFGPR- Percentage with manufacturing jobs. We should also multiply this by POP80
+CART - # votes for Carter, here we see a strong multiplicative relationship?
+ANDR- # votes for ANDR, here we see a strong multiplicative relationship?
+REAG- # votes for Reagan, multiplicative relationship?
+
+
+
+Here, we wanted to investigate what the extreme values of POP80 were. 
+```{r}
+hist(POP80,nclass=30)
+mydata[mydata$POP80==max(mydata$POP80,na.rm=T),]
+```
+
+Here we see that the extreme has a population of 161,799 people and that both rows are coming from the same town on two different visits. This population is not that extreme. It is probably Boston. We could easily figure this out, but it doesn't look to be a problem. 
+
+As we understood the variables, we noticed that HHMEDI and PERCAPI tell us similar information and thus could potentially be highly correlated, so we took at look at this correlation.
+```{r}
+cor(HHMEDI, PERCAPI, use = "complete.obs")
+plot(HHMEDI, PERCAPI)
+```
+So here we see that there is a very strong linear relationship between these two variables. In our model, we should choose to incorporate only one of these. If we incorporated both, we would end up double counting this attribute due to the high multicolinearity. 
+
+Next, we took a look at the variable POVPR which represents the percent of the population under the poverty line as a number (not a percentage). Because we saw some flaring out in the scatter chart, it is a good idea to see if we can transform this variable. Here we wanted to turn it into the number of people under the poverty line in each city. 
+
+```{r}
+plot(GROSS, POVPR)
+mydata$povnum <- mydata$POVPR/100 * mydata$POP80
+attach(mydata)
+cor(GROSS, povnum)
+plot(GROSS, povnum)
+```
+This attribute is clearly not perfect still, but is better. You see that the correlation increased from 0.05 to  0.24
+
+WE can try a similar process for MFGPR
+
+```{r}
+plot(GROSS,MFGPR)
+cor(GROSS,MFGPR,use = "complete.obs")
+plot(GROSS,MFGPR*POP80)
+cor(GROSS,MFGPR*POP80,use="complete.obs")
+```
+Here we see multiplying by POP80 actually decreased the correlation, so maybe we should just use MFGPR rather than transforming it.
+
+Another thing variable we can look at more would be MAGE 
+
+When we do so, we see that there's a few observations where the MAGE is really low. We can take a look to try to understand what's going on here. 
+```{r}
+plot(GROSS,MAGE)
+cor(GROSS,MAGE,use="complete.obs")
+mydata[mydata$MAGE==min(mydata$MAGE,na.rm=T),]
+```
+By looking at the other attributes in these observations it becomes clear that the observations all come from the same town and that that town is more likely a college town. We also see that, while the MAGE being around 30-35 could come with a wide variety of GROSS donations, older towns really only stay in the less than ~5000 range. This is probably just due to a lack of observations in this town, but it could be something to look at as a cluster -- towns with high MAGEs. 
+
+Next, we look at the president attributes
+
+```{r}
+plot(CART,GROSS)
+plot(REAG,GROSS)
+plot(ANDR,GROSS)
+cor(GROSS,CART,use="complete.obs")
+cor(GROSS,REAG,use="complete.obs")
+cor(GROSS,ANDR,use="complete.obs")
+```
+
+Here we see a couple things. 1) All three attributes look like they have strong correlations with GROSS from the plots, although we also really do see the flaring out that indicates a multiplicative effect. 
+  2) We also see that there's a high correlation between the three attributes. Due to this multicolinearity, we would most likely want to only use one in our model. 
+  
+  One thing we can try with the flaring out would be to turn the number of votes to a percentage of the town. 
+  
+```{r}
+plot(CART,GROSS)
+plot(CART/POP80,GROSS,xlim = c(0.1,2))
+cor(GROSS, CART)
+cor(GROSS, CART/POP80)
+
+
+```
+  Here we see that the correlation decreases significantly when you divide by POP80, so maybe that's not the best thing to do. We also see, however, that there are some points where the percentage of people in the town voting for CART is 1.4. This doesn't make any sense and thus indicates that these points are incorrect. We may want to eliminate them. But even in towns where the percentage is less than 1, we may want to further investigate where total votes in 1980 are greater than the population.
+```{r}
+plot(CART/POP80+ANDR/POP80+REAG/POP80,GROSS,xlim = c(0.1,2))
+```
+When we look at it, we see that there are at least 2 more points that don't make a lot of sense here as the total votes in the election is more than 100% of the population. We should think about taking these points out too. While I don't think we should take out more points, we should also be skeptical of points where more than 50% of the population 
+
+```{r}
+mydata <- (mydata[POP80>CART + ANDR + REAG,])
+attach(mydata)
+
+```
+We can also transform COLLPR to get numcoll
+```{r}
+describe(mydata)
+mydata$num_COLL<-COLLPR*POP80
+cor(GROSS, num_COLL)
+attach(mydata)
+
+
+```
+Now, let's try making our first model
+
+```{r}
+model1<-lm(GROSS~POP80+MOY+CPI+num_COLL+PERCAPI)
+describe(GROSS)
+summary(model1)
+```
+```{r}
+cor(mydata)
+```
+
+Here the highest correlated data looks like :
+1)VISIT
+2)POP80
+3)HHMEDI
+4) PERCAPI
+5)MFGPR
+6)REAG
+7) ANDR
+8) povnum
+9)num_COLL
+
+Here visit, has a very high correlation, but right now we can't use it because we need to transform it into a factor 
+
+```{r}
+mydata$VISIT<-as.factor(mydata$VISIT)
+```
+
+And now let's create another model.
+
+```{r}
+model2<- lm(GROSS ~ VISIT + POP80 + PERCAPI + MFGPR + REAG + povnum + num_COLL)
+summary(model2)
+```
+
+Now that we have a bit of a better model, we should look at the residuals. 
+
+```{r}
+attach(mydata)
+for (col in 2:ncol(mydata)){
+  plot(unlist(mydata[,col]), GROSS, main = names(mydata[col]))
+}
+
+
+```
+
