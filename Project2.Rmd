@@ -1,0 +1,236 @@
+---
+title: "Seaworld"
+author: "Yifeng Huang"
+date: "August 16, 2018"
+output: pdf_document
+---
+```{r lib,echo=FALSE,warning=F}
+library(readxl)
+library(MASS)
+library(car)
+library(corrplot)
+library(psych)
+library(ggplot2)
+library(tidyr)
+```
+
+#Data Clean
+
+
+##Overview
+```{r,warning=F}
+#data import
+seawatch.ori<-read_excel("~/MSBA notes/Business Stats/Seawatch C w blanks-1.xlsx")
+
+# we delete CNVHRS, Notes, City and Zip code. 
+seawatch<-seawatch.ori[,3:20]
+seawatch<-seawatch[,-2] 
+# overview
+head(seawatch)
+describe(seawatch)
+
+ggplot(gather(seawatch), aes(value)) + 
+    geom_histogram(bins = 10) + 
+    facet_wrap(~key, scales = 'free_x')
+## Note that VISIT and LST are categorical variables
+
+## Convert numberic variables to Categorical
+seawatch$VISIT<-as.factor(seawatch$VISIT)
+seawatch$LST<-as.factor(seawatch$LST)
+```
+
+##Missing Values
+```{r}
+# number of NA's
+nrow(seawatch)-nrow(na.omit(seawatch))
+
+## Since there are only 34 rows containing na's we can simply delete it
+seawatch<-na.omit(seawatch)
+```
+
+
+##Other strange observation
+
+
+###CART, REAG, and ANDR
+
+
+- For some observations, the number of votes is bigger than total population. Due to the high correlation (0.9533607) between POP80 and the sum of those there vote numbers, we can build a model to predict the right population.
+```{r}
+# scatter plot
+plot(GROSS~I(CART/POP80),data = seawatch)
+
+# observations that CART or REAG or ANDR is larger than total population
+ex.obs<-seawatch$CART>seawatch$POP80 | seawatch$REAG>seawatch$POP80 | seawatch$REAG>seawatch$POP80
+
+seawatch[ex.obs,c("POP80",'REAG','ANDR')]
+
+# correlation
+cor(seawatch$POP80,I(seawatch$CART+seawatch$REAG+seawatch$ANDR))
+
+# plot pop80 and sum of those 3 vote numbers
+plot(POP80~I(CART+REAG+ANDR),data = seawatch)
+
+# original sd
+sd(seawatch[-ex.obs,]$POP80)
+
+# predictive model
+## full model
+pop.lm<-lm(POP80~.+I(CART+REAG+ANDR),data = seawatch[-ex.obs,])
+## Predictors selection
+step(pop.lm,direction = "backward",trace = 0)
+## update model
+pop.lm<-lm(formula = POP80 ~ GROSS + MOY + CPI + HHMEDI + POVPR + MFGPR + 
+    MAGE + CART + REAG + ANDR,data = seawatch[-ex.obs,])
+
+## check multicolinearity
+vif(pop.lm)
+
+## drop ANDR
+pop.lm<-update(pop.lm,.~.-ANDR)
+vif(pop.lm)
+
+## summary and plot of the model
+summary(pop.lm)
+
+## drop GROSS, MOY, CPI and HHMEDI
+pop.lm<-update(pop.lm,.~.-GROSS-MOY-CPI-HHMEDI)
+summary(pop.lm)
+par(mfrow=c(2,2))
+plot(pop.lm)
+
+## predict the total population
+pred<-predict(pop.lm,seawatch[ex.obs,])
+seawatch[ex.obs,"POP80"]<-pred
+```
+
+
+###POVPR,COLLPR and MFGPR
+
+
+- Due to the increasing variance, instead of percentage, we transform those varibles to exact number by mutiplying total population. As a result, the linear correlations is more obvious.
+```{r,warning=F}
+#Compare variance before and after transformation
+par(mfrow=c(2,3))
+plot(GROSS~POVPR,data = seawatch)
+plot(GROSS~MFGPR,data = seawatch)
+plot(GROSS~COLLPR,data = seawatch)
+plot(GROSS~I(POVPR*POP80),data = seawatch)
+plot(GROSS~I(MFGPR*POP80),data = seawatch)
+plot(GROSS~I(COLLPR*POP80),data = seawatch)
+
+# Add POVPP,MFGPP,COLLPP to data
+seawatch$POVPP<-seawatch$POVPR*seawatch$POP80
+seawatch$MFGPP<-seawatch$MFGPR*seawatch$POP80
+seawatch$COLLPP<-seawatch$COLLPR*seawatch$POP80
+
+```
+
+
+#Modeling
+
+
+##Training and Testing subsets split
+```{r}
+set.seed(1024)
+train.num<-sample(1:dim(seawatch)[1],round(nrow(seawatch)*0.75))
+seawatch.train<-seawatch[train.num,]
+seawatch.test<-seawatch[-train.num,]
+```
+
+
+
+##Predictors Selections
+```{r}
+
+# full model
+full.lm<-lm(data = seawatch.train,GROSS~.)
+
+# predictors selection
+step(full.lm,direction = "backward",trace = 0)
+
+# update model
+fit.lm<-lm(formula = GROSS ~ MOY + YR + VISIT + LST + HHMEDI + CART + 
+    REAG + ANDR + POVPP + COLLPP, data = seawatch.train)
+
+# check multicolinearity
+vif(fit.lm)
+
+# drop ANDR
+fit.lm<-update(fit.lm,.~.-ANDR)
+vif(fit.lm)
+
+# drop CART
+fit.lm<-update(fit.lm,.~.-CART)
+vif(fit.lm)
+
+
+# summary 
+summary(fit.lm)
+
+# drop YR,POVPR,PERCAPI
+fit.lm<-update(fit.lm,.~.-YR-MOY-HHMEDI-REAG)
+summary(fit.lm)
+
+# residual analysis
+par(mfrow=c(2,2))
+plot(fit.lm)
+```
+
+
+- There exists clear non-constant variance. Also predictors are not normally distributed. As a result, we use the power transformation to modify the model.
+
+
+##Power Transformation model
+```{r}
+powerTransform(cbind(seawatch.train$GROSS,seawatch$POVPR,seawatch$COLLPP)~1)
+
+# Thus, we build another model by taking natural log on both sides
+new.fit.lm<-lm(formula = log(GROSS) ~ VISIT + LST + log(POVPP) + log(COLLPP), data = seawatch.train)
+summary(new.fit.lm)
+par(mfrow=c(2,2))
+plot(new.fit.lm)
+```
+
+
+- Note that the variance of error is more constant and the predictors are distributed better than the original linear model
+
+
+##Model based on correlation
+```{r}
+model2<- lm(GROSS ~ VISIT + POP80 + PERCAPI + MFGPR + REAG + POVPP + COLLPP,data = seawatch.train)
+summary(model2)
+
+par(mfrow=c(2,2))
+plot(model2)
+
+#multicolinearity check
+vif(model2)
+
+```
+
+##Cross Validation
+```{r}
+#MSE function
+MSE<-function(pred,actual){
+  return(mean((pred-actual)^2))
+}
+
+#predictions based on each model
+pred.fit<-predict(fit.lm,newdata = seawatch.test)
+pred.fit.new<-predict(new.fit.lm,newdata = seawatch.test)
+pred.model2<-predict(model2,newdata = seawatch.test)
+
+#MSE table
+data.frame(
+  Model=c("fit.lm","fit.powertrans","model2"),
+  MSE=c(MSE(pred.fit,seawatch.test$GROSS),MSE(exp(pred.fit.new),seawatch.test$GROSS),MSE(pred.model2,seawatch.test$GROSS))
+)
+```
+
+
+- The model with lowest MSE so far is the log-transformation model.
+
+
+
+
