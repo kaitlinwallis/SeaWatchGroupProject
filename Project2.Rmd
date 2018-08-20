@@ -1,10 +1,10 @@
 ---
-title: "Seaworld"
+title: "Seawatch"
 author: "Yifeng Huang"
 date: "August 16, 2018"
 output: pdf_document
 ---
-```{r lib,echo=FALSE,warning=F}
+```{r lib,echo=FALSE,warning=F,include=FALSE}
 library(readxl)
 library(MASS)
 library(car)
@@ -19,14 +19,16 @@ library(tidyr)
 
 ##Overview
 ```{r,warning=F}
-#data import
+# remove environment
+rm(list=ls())
+
+# data import
 seawatch.ori<-read_excel("~/MSBA notes/Business Stats/Seawatch C w blanks-1.xlsx")
 
 # we delete CNVHRS, Notes, City and Zip code. 
 seawatch<-seawatch.ori[,3:20]
 seawatch<-seawatch[,-2] 
 # overview
-head(seawatch)
 describe(seawatch)
 
 ggplot(gather(seawatch), aes(value)) + 
@@ -37,6 +39,7 @@ ggplot(gather(seawatch), aes(value)) +
 ## Convert numberic variables to Categorical
 seawatch$VISIT<-as.factor(seawatch$VISIT)
 seawatch$LST<-as.factor(seawatch$LST)
+
 ```
 
 ##Missing Values
@@ -59,11 +62,16 @@ seawatch<-na.omit(seawatch)
 ```{r}
 # scatter plot
 plot(GROSS~I(CART/POP80),data = seawatch)
+summary(seawatch$CART)
+```
 
+
+- Note that some observations have CART/POP80 > 1, indicating CART larger than total population.
+```{r}
 # observations that CART or REAG or ANDR is larger than total population
 ex.obs<-seawatch$CART>seawatch$POP80 | seawatch$REAG>seawatch$POP80 | seawatch$REAG>seawatch$POP80
 
-seawatch[ex.obs,c("POP80",'REAG','ANDR')]
+seawatch[ex.obs,c("POP80",'REAG','ANDR','CART')]
 
 # correlation
 cor(seawatch$POP80,I(seawatch$CART+seawatch$REAG+seawatch$ANDR))
@@ -207,6 +215,56 @@ plot(model2)
 #multicolinearity check
 vif(model2)
 
+model2<-update(model2,.~.-POP80)
+vif(model2)
+
+#powertransformation
+powerTransform(cbind(seawatch.train$GROSS,seawatch.train$PERCAPI,seawatch.train$MFGPR,seawatch.train$REAG,seawatch.train$POVPP,seawatch.train$COLLPP)~1)
+
+#model2
+model2<-lm(log(GROSS) ~ VISIT + 1/PERCAPI + sqrt(MFGPR) + log(REAG) + log(POVPP) + log(COLLPP),data = seawatch.train)
+summary(model2)
+model2<-update(model2,.~.-log(REAG))
+summary(model2)
+par(mfrow=c(2,2))
+plot(model2)
+```
+
+
+##model with interaction
+
+```{r}
+# Interaction plot
+interaction.plot(seawatch.train$VISIT,seawatch.train$LST,seawatch.train$GROSS)
+
+interaction.lm<-lm(data = seawatch.train,GROSS~MOY + YR + VISIT + LST + HHMEDI + CART +  REAG + ANDR + POVPP +COLLPP+MOY:VISIT+YR:VISIT+LST:VISIT+HHMEDI:VISIT+CART:VISIT+REAG:VISIT+ANDR:VISIT+POVPP:VISIT+COLLPP:VISIT+MOY:LST+YR:LST+HHMEDI:LST+CART:LST+REAG:LST+ANDR:LST+POVPP:LST+COLLPP:LST)
+
+# Power transformation
+powerTransform(cbind(seawatch.train$GROSS,seawatch.train$MOY,seawatch.train$HHMEDI,seawatch.train$CART,seawatch.train$REAG,seawatch.train$ANDR,seawatch.train$POVPP,seawatch.train$COLLPP)~1)
+
+interaction.lm<-lm(data = seawatch.train,log(GROSS)~MOY + YR + VISIT + LST + log(HHMEDI) + log(CART) +  log(REAG) + log(ANDR) + log(POVPP) +log(COLLPP)+MOY:VISIT+log(YR):VISIT+LST:VISIT+log(HHMEDI):VISIT+log(CART):VISIT+log(REAG):VISIT+log(ANDR):VISIT+log(POVPP):VISIT+log(COLLPP):VISIT+MOY:LST+log(YR):LST+log(HHMEDI):LST+log(CART):LST+log(REAG):LST+log(ANDR):LST+log(POVPP):LST+log(COLLPP):LST)
+
+#predictors selection
+step(interaction.lm,trace = 0)
+
+interaction.lm<-lm(formula = log(GROSS) ~ VISIT + LST + log(CART) + log(REAG) + 
+    log(ANDR) + log(POVPP) + log(COLLPP) + VISIT:log(REAG) + 
+    VISIT:log(COLLPP) + LST:log(YR) + LST:log(CART) + LST:log(REAG) + 
+    LST:log(COLLPP), data = seawatch.train)
+# Delete ANDR and CART due to high colinear
+vif(lm(formula = log(GROSS) ~ VISIT + LST + log(CART) + log(REAG) + 
+    log(ANDR) + log(POVPP) + log(COLLPP),data=seawatch.train))
+interaction.lm<-update(interaction.lm,.~.-log(ANDR)-log(CART)-log(REAG))
+vif(lm(formula = log(GROSS) ~ VISIT + LST + log(POVPP) + log(COLLPP),data=seawatch.train))
+
+# Summary
+summary(interaction.lm)
+
+# drop VISIT and log(POVPP)
+interaction.lm<-update(interaction.lm,.~.-VISIT-log(POVPP))
+summary(interaction.lm)
+par(mfrow=c(2,2))
+plot(interaction.lm)
 ```
 
 ##Cross Validation
@@ -217,15 +275,19 @@ MSE<-function(pred,actual){
 }
 
 #predictions based on each model
+
+pred.test<-predict(update(new.fit.lm,.~+VISIT:LST),newdata = seawatch.test) 
+
 pred.fit<-predict(fit.lm,newdata = seawatch.test)
 pred.fit.new<-predict(new.fit.lm,newdata = seawatch.test)
 pred.model2<-predict(model2,newdata = seawatch.test)
+pred.interaction<-predict(interaction.lm,newdata = seawatch.test)
+
 
 #MSE table
 data.frame(
-  Model=c("fit.lm","fit.powertrans","model2"),
-  MSE=c(MSE(pred.fit,seawatch.test$GROSS),MSE(exp(pred.fit.new),seawatch.test$GROSS),MSE(pred.model2,seawatch.test$GROSS))
-)
+  Model=c("fit.lm","fit.powertrans","model2","interaction model","predict test"),
+  MSE=c(MSE(pred.fit,seawatch.test$GROSS),MSE(exp(pred.fit.new),seawatch.test$GROSS),MSE(exp(pred.model2),seawatch.test$GROSS),MSE(exp(pred.interaction),seawatch.test$GROSS),MSE(exp(pred.test),seawatch.test$GROSS)))
 ```
 
 
