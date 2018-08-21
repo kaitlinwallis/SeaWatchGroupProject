@@ -293,6 +293,33 @@ data.frame(
 
 - The model with lowest MSE so far is the log-transformation model.
 
+# Visualization 
+```{r}
+seawatch<-seawatch[order(seawatch$GROSS),]
+seawatch$pred.value<-exp(predict(new.fit.lm,newdata = seawatch))
+seawatch$upper.int<-seawatch$pred.value*3
+seawatch$lower.int<-seawatch$pred.value/3
+seawatch$ID<-c(1:nrow(seawatch))
 
+
+#Actual data vs. predicted
+ggplot(data=seawatch,aes(x=ID,y=GROSS))+
+  geom_line(aes(y=GROSS,color="Actual Gross"))+
+  geom_line(aes(y=pred.value, color="Predicted Gross"))+
+  theme_bw()+
+  geom_ribbon(aes(ymin = pred.value/3, ymax = pred.value*3), fill="grey70",alpha=0.5)+
+  ylim(c(0,40000))+
+  ggtitle("Prediction Line") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+#take log 
+ggplot(data=seawatch,aes(x=ID,y=log(GROSS)))+
+  geom_line(aes(y=log(GROSS),color="ln(GROSS)"))+
+  geom_line(aes(y=log(pred.value), color="ln(predicted Gross)"))+
+  theme_bw()+
+  geom_ribbon(aes(ymin = log(lower.int), ymax = log(upper.int)), fill="grey70",alpha=0.5)+
+  ggtitle("Log Plot") +
+  theme(plot.title = element_text(hjust = 0.5))
+```
 
 
